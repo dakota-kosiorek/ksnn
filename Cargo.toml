@@ -2,7 +2,7 @@
 name = "ksnn"
 version = "0.1.1"
 edition = "2021"
-description = "ksnn, or Kosiorek's Simple Neural Networks, is a program that simplifies the creation, training, and validation of a neural network. The program is heaavely inspired by \"Neural Networks from Scratch in Python\" by Harrison Kinsley & Daniel Kukieła."
+description = "ksnn, or Kosiorek's Simple Neural Networks, is a program that simplifies the creation, training, and validation of a neural network. The program is heavily inspired by \"Neural Networks from Scratch in Python\" by Harrison Kinsley & Daniel Kukieła."
 license = "MIT OR Apache-2.0"
 exclude = [
     "src/main.rs",

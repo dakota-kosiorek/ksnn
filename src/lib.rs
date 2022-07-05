@@ -383,9 +383,9 @@ impl ClassificationNetwork {
                 if self.have_dropout_layers == true {
                     self.dense_layer_activations[i].backward(&self.dropout_layers[i].dinputs.as_ref().unwrap(), &y_train);
                     self.dense_layers[i].backward(&self.dense_layer_activations[i].get_dinputs());
-
+                    
                     if i > 0 {
-                        self.dropout_layers[i].backward(&self.dense_layers[i - 1].dinputs.as_ref().unwrap());
+                        self.dropout_layers[i - 1].backward(&self.dense_layers[i].dinputs.as_ref().unwrap());
                     }
                 }
                 else {
@@ -625,7 +625,7 @@ impl DropoutLayer {
         for i in 0..binary_mask.len() {
             binary_mask[(0, i)] = bin_mask[i] / self.rate;
         }
-
+        
         let binary_mask_copy = binary_mask.map(|x| *x);
         self.binary_mask = Some(binary_mask);
         
