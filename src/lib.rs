@@ -375,9 +375,23 @@ impl ClassificationNetwork {
             let final_activation_dinputs =  self.dense_layer_activations[final_activation_index].get_dinputs().map(|x| *x);
             self.dense_layers[final_activation_index].backward(&final_activation_dinputs);
 
+            if self.have_dropout_layers == true {
+                self.dropout_layers[final_activation_index - 1].backward(&self.dense_layers[final_activation_index].dinputs.as_ref().unwrap());
+            }
+
             for i in (0..(self.dense_layers.len() - 1)).rev() {
-                self.dense_layer_activations[i].backward(&self.dense_layers[i + 1].dinputs.as_ref().unwrap(), &y_train);
-                self.dense_layers[i].backward(&self.dense_layer_activations[i].get_dinputs());
+                if self.have_dropout_layers == true {
+                    self.dense_layer_activations[i].backward(&self.dropout_layers[i].dinputs.as_ref().unwrap(), &y_train);
+                    self.dense_layers[i].backward(&self.dense_layer_activations[i].get_dinputs());
+
+                    if i > 0 {
+                        self.dropout_layers[i].backward(&self.dense_layers[i - 1].dinputs.as_ref().unwrap());
+                    }
+                }
+                else {
+                    self.dense_layer_activations[i].backward(&self.dense_layers[i + 1].dinputs.as_ref().unwrap(), &y_train);
+                    self.dense_layers[i].backward(&self.dense_layer_activations[i].get_dinputs());
+                }
             }
 
             self.optimizer.pre_update_params();
