@@ -4,6 +4,7 @@ version = "0.2.0"
 edition = "2021"
 description = "ksnn, or Kosiorek's Simple Neural Networks, is a crate that simplifies the creation, training, and validation of a neural network. The crate is heavily inspired by \"Neural Networks from Scratch in Python\" by Harrison Kinsley & Daniel Kukieła."
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/DMKosiorek/ksnn"
 exclude = [
     "src/main.rs",
     "testing/*",
