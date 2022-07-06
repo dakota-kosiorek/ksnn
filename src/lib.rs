@@ -1,3 +1,14 @@
+//! ksnn
+//! 
+//! `ksnn`, or Kosiorek's Simple Neural Networks, is a crate that simplifies the creation, training, and validation of a neural network. 
+//! The crate is heavily inspired by "Neural Networks from Scratch in Python" by Harrison Kinsley & Daniel Kukieła.
+//! 
+//! # Crate TODO's
+//! * Improving crate efficiency, likely through multithreading
+//! * Implement a way to load and save trained networks
+//! * Addition of more network types, such as regression networks
+//! * Addition of more activation and entropy functions
+
 #![allow(dead_code)]
 use std::process;
 use ndarray::Array;
@@ -9,6 +20,7 @@ use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 
 #[derive(Debug)]
+/// A enum of pre-made activation functions that can be used in a neural network.
 pub enum ActivationFunctions {
     ActivationReLU(ActivationReLU),
     SoftmaxLossCC(SoftmaxLossCC),
@@ -56,16 +68,7 @@ impl ActivationFunctions {
 }
 
 #[derive(Debug)]
-/// There are four optimizers built into the ksnn crate:
-/// 
-/// ```OptimizerSGD```
-/// 
-/// ```OptimizerAdagrad```
-/// 
-/// ```OptimizerRMSprop```
-/// 
-/// ```OptimizerAdam```
-/// 
+/// A enum of pre-made optimizers for a neural network.
 pub enum Optimizers {
     OptimizerSGD(OptimizerSGD),
     OptimizerAdagrad(OptimizerAdagrad),
@@ -108,79 +111,154 @@ impl Optimizers {
     }
 }
 
+/// Creates a `Optimizers::OptimizerSGD` and takes in a learning rate, decay, and momentum parameter.
+/// # Examples
+/// ``` 
+/// let optimizer = ksnn::optimizer_sgd(0.3, 1e-2, 0.6);
+/// ```
 pub fn optimizer_sgd(learning_rate: f64, decay: f64, momentum: f64) ->  Optimizers {
     Optimizers::OptimizerSGD(OptimizerSGD::new(learning_rate, decay, momentum))
 }
 
+/// Creates a `Optimizers::OptimizerSGD` that has a built in learning rate of 1.0, built in decay of 1e-3, and built in momentum of 0.9.
+/// # Examples
+/// ``` 
+/// let optimizer = ksnn::optimizer_sgd_def();
+/// ```
 pub fn optimizer_sgd_def() ->  Optimizers {
     Optimizers::OptimizerSGD(OptimizerSGD::new(1.0, 1e-3, 0.9))
 }
 
+/// Creates a `Optimizers::OptimizerAdagrad` and takes in a learning rate, decay, and epsilon parameter.
+/// # Examples
+/// ``` 
+/// let optimizer = ksnn::optimizer_adagrad(0.8, 1e-4, 1e-4);
+/// ```
 pub fn optimizer_adagrad(learning_rate: f64, decay: f64, epsilon: f64) ->  Optimizers {
     Optimizers::OptimizerAdagrad(OptimizerAdagrad::new(learning_rate, decay, epsilon))
 }
 
+/// Creates a `Optimizers::OptimizerAdagrad` that has a built in learning rate of 1.0, built in decay of 1e-5, and built in epsilon of 1e-7.
+/// # Examples
+/// ``` 
+/// let optimizer = ksnn::optimizer_adagrad_def();
+/// ```
 pub fn optimizer_adagrad_def() ->  Optimizers {
     Optimizers::OptimizerAdagrad(OptimizerAdagrad::new(1.0, 1e-5, 1e-7))
 }
 
+/// Creates a `Optimizers::OptimizerRMSprop` and takes in a learning rate, decay, epsilon, and rho parameter.
+/// # Examples
+/// ``` 
+/// let optimizer = ksnn::optimizer_rms_prop(0.08, 1e-4, 1e-7, 0.999);
+/// ```
 pub fn optimizer_rms_prop(learning_rate: f64, decay: f64, epsilon: f64, rho: f64) ->  Optimizers {
     Optimizers::OptimizerRMSprop(OptimizerRMSprop::new(learning_rate, decay, epsilon, rho))
 }
 
+/// Creates a `Optimizers::OptimizerRMSprop` that has a built in learning rate of 0.02, built in decay of 1e-5, built in epsilon of 1e-7, and built in rho of 0.999.
+/// # Examples
+/// ``` 
+/// let optimizer = ksnn::optimizer_rms_prop_def();
+/// ```
 pub fn optimizer_rms_prop_def() ->  Optimizers {
     Optimizers::OptimizerRMSprop(OptimizerRMSprop::new(0.02, 1e-5, 1e-7, 0.999))
 }
 
-/// ksnn's Adam optimizer.
+/// Creates a `Optimizers::OptimizerAdam` and takes in a learning rate, decay, epsilon, beta 1, and beta 2 parameter.
+/// # Examples
+/// ``` 
+/// let optimizer = ksnn::optimizer_adam(0.06, 5e-7, 1e-7, 0.9, 0.99);
+/// ```
 pub fn optimizer_adam(learning_rate: f64, decay: f64, epsilon: f64, beta_1: f64, beta_2: f64) ->  Optimizers {
     Optimizers::OptimizerAdam(OptimizerAdam::new(learning_rate, decay, epsilon, beta_1, beta_2))
 }
 
-/// ksnn's defaults values for the Adam optimizer. The values are as follow:
-/// ```no_run
-/// learning_rate: 0.05
-/// decay: 5e-7
-/// epsilon: 1e-7
-/// beta_1: 0.9
-/// beta_2: 0.999
+/// Creates a `Optimizers::OptimizerAdam` that has a built in learning rate of 0.05, built in decay of 5e-7, built in epsilon of 1e-7, built in beta 1 of 0.9, and built in beta 2 of 0.999.
+/// # Examples
+/// ``` 
+/// let optimizer = ksnn::optimizer_adam_def();
 /// ```
 pub fn optimizer_adam_def() ->  Optimizers {
     Optimizers::OptimizerAdam(OptimizerAdam::new(0.05, 5e-7, 1e-7, 0.9, 0.999))
 }
 
 #[derive(Debug)]
+/// Stores all information needed for the training and validating of a classification focused network. The network has parameters that can be manually 
+/// set such as an individual layers bias and weight l1/l2 regularizer, an individual layers dropout rate if dropout layers have been enabled, and if the 
+/// training progress should be displayed as a progress bar or if the loss and accuaracy should be printed to the terminal.
 /// # Examples
-/// Example 1:
-/// ```no_run
-/// use ksnn::ClassificationNetwork;
-/// use ndarray::Array2;
+/// ```
 /// 
-/// let x: Array2<f64> = arr2(&[
-///     [0.7, -0.1, 0.44],
-///     [0.9, 0.26, 0.8]
-/// ]);
-/// let y: Array2<i32> = arr2(&[
-///     [1, 0, 0, 0],
-///     [0, 0, 1, 0],
+/// let x_train = ndarray::arr2(&[
+///     [0.7, 0.29, 1.0, 0.55, 0.33, 0.27],
+///     [0.01, 0.08, 0.893, 0.14, 0.19, 0.98]
 /// ]);
 /// 
-/// let num_classes = ksnn::get_num_classes(y);
-/// let nn_activation_functions = vec!["ActivationReLU", "SoftmaxLossCC"];
-///let nn_units = vec![64, num_classes];
+/// let y_train = ndarray::arr2(&[
+///     [0, 0, 1],
+///     [0, 1, 0]
+/// ]);
+/// 
+/// let x_test = ndarray::arr2(&[
+///     [0.64, 0.456, 0.68, 0.1, 0.123, 0.32],
+///     [0.78, 0.56, 0.58, 0.12, 0.37, 0.46]
+/// ]);
+/// 
+/// let y_test = ndarray::arr2(&[
+///     [1, 0, 0],
+///     [0, 1, 0]
+/// ]);
+/// 
+/// let mut neural_network = ksnn::ClassificationNetwork::new(
+///     vec!["ActivationReLU", "ActivationReLU", "ActivationReLU", "SoftmaxLossCC"],
+///     vec![32, 64, 48, 3],
+///     ksnn::enable_dropout_layers(true),
+///     ksnn::optimizer_adam_def(),
+///     &x_train,
+/// );
 ///
-/// let mut neural_network = ClassificationNetwork::new(
-///     &x, 
-///     nn_activation_functions, 
-///     nn_units, 
-///     ksnn::optimizer_adam_def()
+/// neural_network.fit(100, 1, x_train, y_train);
+/// neural_network.validate(x_test, y_test);
+/// ```
+/// *Note above example would not produce tangible results due to small training and validation datasets.
+/// 
+/// Some parts of an individual layer in the network can be adjusted, such as the dropout rate if it was enabled at network declaration.
+/// ```
+/// let x_train = ndarray::arr2(&[
+///     [0.7, 0.29, 1.0, 0.55, 0.33, 0.27],
+///     [0.01, 0.08, 0.893, 0.14, 0.19, 0.98]
+/// ]);
+/// 
+/// let mut neural_network = ksnn::ClassificationNetwork::new(
+///     vec!["ActivationReLU", "SoftmaxLossCC"],
+///     vec![32, 3],
+///     ksnn::enable_dropout_layers(true),
+///     ksnn::optimizer_adam_def(),
+///     &x_train,
 /// );
 /// 
+/// neural_network.dropout_layers[0].rate = 0.85;
+/// ```
+/// l1 and l2 regularization can also be adjusted for an individual layer
+/// ```
+/// let x_train = ndarray::arr2(&[
+///     [0.7, 0.29, 1.0, 0.55, 0.33, 0.27],
+///     [0.01, 0.08, 0.893, 0.14, 0.19, 0.98]
+/// ]);
+/// 
+/// let mut neural_network = ksnn::ClassificationNetwork::new(
+///     vec!["ActivationReLU", "SoftmaxLossCC"],
+///     vec![32, 3],
+///     ksnn::enable_dropout_layers(true),
+///     ksnn::optimizer_adam_def(),
+///     &x_train,
+/// );
+/// 
+/// neural_network.dense_layers[0].weight_regularizer_l1 = 5e-4;
 /// neural_network.dense_layers[0].weight_regularizer_l2 = 5e-4;
+/// neural_network.dense_layers[0].bias_regularizer_l1 = 5e-4;
 /// neural_network.dense_layers[0].bias_regularizer_l2 = 5e-4;
-///
-/// neural_network.fit(100, x_train, y_train);
-/// neural_network.validate(x_test, y_test);
 /// ```
 pub struct ClassificationNetwork {
     dense_layer_activations: Vec<ActivationFunctions>,
@@ -194,36 +272,29 @@ pub struct ClassificationNetwork {
 }
 
 impl ClassificationNetwork {
-    /// Crates a new `ClassificationNetwork` object and takes in four values. Descriptions for the parameter values are:
-    /// 
-    /// `x`: A 2d array that is the input data the network will train on.
-    /// 
-    /// `dense_layer_activations`: A string vector that names what activation function to use for each
-    /// of the networks dense layers.
-    /// 
-    /// `dense_layer_units`: A usize vector that lists how many neurons each of the networks dense layers will have.
-    /// The final value should always be the number of classes that the networks needs to classify.
-    /// 
-    /// `optimizer`: The object that trains and corrects the network. There are four current optimizers in ksnn.
+    /// Creates a new `ClassificationNetwork` object and takes in four values. `dense_layer_activations` is a string vector that names what activation function to use for each
+    /// of the networks layers. `dense_layer_units` is a usize vector that lists how many neurons each of the networks layers will have. The final value should always be the 
+    /// number of classes that the network needs to classify. `have_dropout_layers` is a bool that enables dropout layer functionality for the network. `optimizer` is the object 
+    /// that corrects the network by changing weights and biases of the networks neurons. `x` is a 2d array that is the input data the network will train on.
     pub fn new(
-        x: &Array2<f64>,
         dense_layer_activations: Vec<&str>,
         dense_layer_units: Vec<usize>,
-        optimizer: Optimizers,
         have_dropout_layers: bool,
+        optimizer: Optimizers,
+        x: &Array2<f64>,
     ) -> Self {
-        ClassificationNetwork::error_handle_new(x, dense_layer_activations, dense_layer_units, optimizer, have_dropout_layers).unwrap_or_else(|err| {
+        ClassificationNetwork::error_handle_new(dense_layer_activations, dense_layer_units, have_dropout_layers, optimizer, x).unwrap_or_else(|err| {
             println!("{}", err);
             process::exit(1);
         })
     }
 
     fn error_handle_new(
-        x: &Array2<f64>,
         dense_layer_activations: Vec<&str>,
         dense_layer_units: Vec<usize>,
-        optimizer: Optimizers,
         have_dropout_layers: bool,
+        optimizer: Optimizers,
+        x: &Array2<f64>,
     ) -> Result<Self, &'static str> {
         let mut dense_layers: Vec<DenseLayer> = Vec::new();
         let mut activations: Vec<ActivationFunctions> = Vec::new();
@@ -283,6 +354,9 @@ impl ClassificationNetwork {
         })
     }
 
+    /// Trains the neural network. `training_epochs` is how many times the entire dataset is passed forward and backwards through the network. `show_progess_interval` is how often
+    /// the networks loss and accuracy is displayed to the user. For example, if this parameter was supplied with a `10` then every ten epochs the loss and accuracy of the network
+    /// would be displayed. `x_train` is the dataset the network will be training on. `y_train` is the anwsers for `x_train`. 
     pub fn fit(&mut self, training_epochs: u64, show_progress_interval: u64, x_train: Array2<f64>, y_train: Array2<i32>) { 
         let training_progress_bar: ProgressBar = ProgressBar::new(training_epochs);
 
@@ -402,6 +476,9 @@ impl ClassificationNetwork {
         }
     }
     
+    /// Tests the neural network on data after training to see how accurate the network is when faced with new information not found in the dataset (Note: the network does not supply
+    /// this original information, it is currently  up to the user to ensure that the information passed to this function is information that the network has not really seen before).
+    /// `x_test`is the validation data the network will try to process and give correct classifications for. `y_test` is the anwsers for `x_test`.
     pub fn validate(&mut self, x_test: Array2<f64>, y_test: Array2<i32>) {
         // Perform a forward pass of training data through this layer
         self.dense_layers[0].forward(&x_test);
@@ -450,6 +527,7 @@ impl ClassificationNetwork {
     }
 }
 
+/// Calculates the accuracy of the network by seeing if the networks predictions match up with the actual anwsers.
 fn calculate_accuracy(input: &Array2<f64>, y_true: &Array2<i32>) -> f64 {
     let mut predictions: Array<i32, ndarray::Dim<[usize; 1]>> = Array::zeros(input.shape()[0]);
     let mut class_targets: Array<i32, ndarray::Dim<[usize; 1]>> = Array::zeros(y_true.shape()[0]);
@@ -487,10 +565,7 @@ fn calculate_accuracy(input: &Array2<f64>, y_true: &Array2<i32>) -> f64 {
 }
 
 #[derive(Debug)]
-/// The individual layer for the nerual network. It is made of three 2d arrays. A weights, biases, and outputs array.
-/// The layer can be initizlied using the `new()` function of `DenseLayer` which take in two usize parameter.
-/// The `forward()` function computes a dot product of a f64 input 2d array and `NetworkLayer`'s weights + `NetworkLayer`'s
-/// biases.
+/// The individual layer for the nerual network. 
 pub struct DenseLayer {
     weights: Array2<f64>,
     biases: Array2<f64>,
@@ -594,8 +669,9 @@ impl DenseLayer {
 }
 
 #[derive(Debug)]
+/// An individual layer for the neural network that only passes a certain amount of information to the next layer.
 pub struct DropoutLayer {
-    rate: f64,
+    pub rate: f64,
     inputs: Option<Array2<f64>>,
     outputs: Option<Array2<f64>>,
     binary_mask: Option<Array2<f64>>,
@@ -681,7 +757,7 @@ impl ActivationReLU {
 #[derive(Debug)]
 /// The softmax actiation function is used for the output layer and 
 /// returns probabilities for what each input samples classification is.
-struct ActivationSoftmax {
+pub struct ActivationSoftmax {
     outputs: Option<Array2<f64>>,
     dinputs: Option<Array2<f64>>,
 }
@@ -756,7 +832,8 @@ impl ActivationSoftmax {
 }
 
 #[derive(Debug)]
-struct LossCategoricalCrossentropy {
+/// Calculates the networks current total loss.
+pub struct LossCategoricalCrossentropy {
     dinputs: Option<Array2<f64>>,
     data_loss: Option<f64>,
 }
@@ -835,9 +912,8 @@ impl LossCategoricalCrossentropy {
 }
 
 #[derive(Debug)]
-// ActivationSoftmaxLossCategoricalCrossentropy
-/// A combination of the softmax activation function and the categorical loss 
-/// crossentropy function that works faster.
+/// Full name ActivationSoftmaxLossCategoricalCrossentropy; A combination of the softmax activation function and the categorical loss 
+/// crossentropy function. The combination allows for a simplified implementation and overall faster calculation time.
 pub struct SoftmaxLossCC {
     activation: ActivationSoftmax,
     loss: LossCategoricalCrossentropy,
@@ -1201,41 +1277,6 @@ fn binomial_error_handle(n: u64, p: f64, size: usize) -> Result<Vec<f64>, &'stat
     Ok(bin_vec)
 }
 
-/// Converts a vector full of string values into a 2d array that is one-hot encoded to properly use with ksnn nueral networks.
-/// Requires a string vector as input and the number of classes in the anwser data that the network will be trained with for
-/// proper conversion.
-pub fn vec_string_to_one_hot(vector: Vec<String>, num_classes: usize) -> Array2<i32> {
-    vec_string_to_one_hot_error_handle(vector, num_classes).unwrap_or_else(|err| {
-        println!("Error in one-hot encoding conversion: {}", err);
-        process::exit(1);
-    })
-}
-
-pub fn vec_string_to_one_hot_error_handle(vector: Vec<String>, num_classes: usize) -> Result<Array2<i32>, &'static str> {
-    let mut data = vector.clone();
-    for outer in 0..data.len() {
-        data[outer] = data[outer].replace(" ", "");
-        data[outer] = data[outer].replace(",", "");
-    }
-    let mut temp: Array2<i32> = Array::zeros((data.len(), num_classes));
-    
-    if num_classes != data[0].len() {
-        return Err("incorrect number of classes was submitted.")
-    }
-
-    for outer in 0..temp.shape()[0] {
-        for inner in 0..temp.shape()[1] {
-            println!("{} {}", data[outer].chars().nth(inner).unwrap(), inner);
-            if data[outer].chars().nth(inner).unwrap() as usize == inner {
-                
-                temp[(outer, inner as usize)] = 1;
-            }
-        }
-    }
-    let y = temp;
-    Ok(y)
-}
-
 /// Converts a vector full of i32 values into a 2d array that is one-hot encoded to properly use with ksnn nueral networks.
 /// Requires a string vector as input and the number of classes in the anwser data that the network will be trained with for
 /// proper conversion.
@@ -1246,7 +1287,7 @@ pub fn vec_i32_to_one_hot(vector: Vec<i32>, num_classes: usize) -> Array2<i32> {
     })
 }
 
-pub fn vec_i32_to_one_hot_error_handle(vector: Vec<i32>, num_classes: usize) -> Result<Array2<i32>, &'static str> {
+fn vec_i32_to_one_hot_error_handle(vector: Vec<i32>, num_classes: usize) -> Result<Array2<i32>, &'static str> {
     let mut temp: Array2<i32> = Array::zeros((vector.len(), num_classes));
 
     for outer in 0..temp.shape()[0] {
@@ -1270,7 +1311,7 @@ pub fn array_i32_to_one_hot(array: Array<i32, ndarray::Dim<[usize; 1]>>, num_cla
     })
 }
 
-pub fn array_i32_to_one_hot_error_handle(array:Array<i32, ndarray::Dim<[usize; 1]>>, num_classes: usize) -> Result<Array2<i32>, &'static str> {
+fn array_i32_to_one_hot_error_handle(array:Array<i32, ndarray::Dim<[usize; 1]>>, num_classes: usize) -> Result<Array2<i32>, &'static str> {
     let mut temp: Array2<i32> = Array::zeros((array.len(), num_classes));
     for outer in 0..temp.shape()[0] {
         for inner in 0..temp.shape()[1] {
@@ -1293,7 +1334,7 @@ pub fn array_f64_to_one_hot(array: Array<f64, ndarray::Dim<[usize; 1]>>, num_cla
     })
 }
 
-pub fn array_f64_to_one_hot_error_handle(array:Array<f64, ndarray::Dim<[usize; 1]>>, num_classes: usize) -> Result<Array2<i32>, &'static str> {
+fn array_f64_to_one_hot_error_handle(array:Array<f64, ndarray::Dim<[usize; 1]>>, num_classes: usize) -> Result<Array2<i32>, &'static str> {
     let mut temp: Array2<i32> = Array::zeros((array.len(), num_classes));
     for outer in 0..temp.shape()[0] {
         for inner in 0..temp.shape()[1] {
@@ -1310,4 +1351,8 @@ pub fn array_f64_to_one_hot_error_handle(array:Array<f64, ndarray::Dim<[usize; 1
 /// the number of classes found in that array. 
 pub fn get_num_classes(y: &Array2<i32>) -> usize {
     y.shape()[1]
+}
+
+pub fn enable_dropout_layers(is_enabled: bool) -> bool {
+    is_enabled
 }
