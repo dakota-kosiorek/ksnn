@@ -4,19 +4,82 @@
 //! The crate is heavily inspired by "Neural Networks from Scratch in Python" by Harrison Kinsley & Daniel Kukieła.
 //! 
 //! # Crate TODO's
-//! * Improving crate efficiency, likely through multithreading
+//! * Improving crate efficiency, likely through multithreading or moving calculations from the CPU to the GPU
 //! * Addition of more network types, such as regression networks
 //! * Addition of more activation and entropy functions
+//! 
+//! # Examples
+//! How to create a `ClassificationNetwork`:
+//! ```no_run
+//! // Step 1: Get Training data and the anwsers for that data formatted in a 2d array.
+//! let x_train = ndarray::arr2(&[
+//!     [0.7, 0.29, 1.0, 0.55, 0.33, 0.27],
+//!     [0.01, 0.08, 0.893, 0.14, 0.19, 0.98]
+//! ]);
+//! 
+//! let y_train = ndarray::arr2(&[
+//!     [0, 0, 1],
+//!     [0, 1, 0]
+//! ]);
+//! 
+//! // Step 2: Get testing data and the anwsers for that data formatted in a 2d array.
+//! let x_test = ndarray::arr2(&[
+//!     [0.64, 0.456, 0.68, 0.1, 0.123, 0.32],
+//!     [0.78, 0.56, 0.58, 0.12, 0.37, 0.46]
+//! ]);
+//! 
+//! let y_test = ndarray::arr2(&[
+//!     [1, 0, 0],
+//!     [0, 1, 0]
+//! ]);
+//! 
+//! // Step 3: Create the network.
+//! let mut neural_network = ksnn::ClassificationNetwork::new(
+//!     vec!["ActivationReLU", "ActivationReLU", "ActivationReLU", "SoftmaxLossCC"],
+//!     vec![32, 64, 48, 3],
+//!     ksnn::enable_dropout_layers(true),
+//!     ksnn::optimizers::optimizer_adam_def(),
+//!     &x_train,
+//! );
+//!
+//! // Step 4: Adjust dropout layers, if enabled.
+//! neural_network.dropout_layers[0].rate = 0.8;
+//! neural_network.dropout_layers[1].rate = 0.75;
+//! neural_network.dropout_layers[2].rate = 0.9;
+//! 
+//! // Step 5: Adjust weight regularizers as desired.
+//! neural_network.dense_layers[0].weight_regularizer_l2 = 5e-4;
+//! neural_network.dense_layers[0].bias_regularizer_l2 = 5e-4;
+//! 
+//! neural_network.dense_layers[1].weight_regularizer_l2 = 5e-3;
+//! neural_network.dense_layers[1].bias_regularizer_l2 = 5e-3;
+//! 
+//! neural_network.dense_layers[2].weight_regularizer_l2 = 5e-5;
+//! neural_network.dense_layers[2].bias_regularizer_l2 = 5e-5;
+//! 
+//! // Step 6: Fit, or train, the network on the training data.
+//! neural_network.fit(100, 1, x_train, y_train);
+//! // Step 6: Test your trained network on data it hasn't seen before to see how well it 
+//! // deals with new information.
+//! neural_network.validate(x_test, y_test);
+//! // Step 7: Save your network to a file to be loaded and used later.
+//! neural_network.save("my_network.json");
+//! ```
+//! How to load a `ClassificationNetwork`:
+//! ```no_run
+//! let mut neural_network = ksnn::ClassificationNetwork::load("my_network.json");
+//! ```
 
 #![allow(dead_code)]
 use std::process;
-//use std::fs::File;
-//use std::io::prelude::*;
+use std::fs::File;
+use std::io::{prelude::*, BufReader};
 use ndarray::Array;
 use ndarray::Array2;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
-//use serde::{Deserialize, Serialize};
+use serde::{Serialize, Deserialize};
+extern crate serde_json;
 
 pub mod activation_functions;
 pub mod network_layers;
@@ -27,7 +90,7 @@ use crate::activation_functions::*;
 use crate::network_layers::*;
 use crate::optimizers::*;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// Stores all information needed for the training and validating of a classification focused network. The network has parameters that can be manually 
 /// set such as an individual layers bias and weight l1/l2 regularizer, an individual layers dropout rate if dropout layers have been enabled, and if the 
 /// training progress should be displayed as a progress bar or if the loss and accuaracy should be printed to the terminal.
@@ -62,6 +125,10 @@ use crate::optimizers::*;
 ///     &x_train,
 /// );
 ///
+/// neural_network.dropout_layers[0].rate = 0.8;
+/// neural_network.dropout_layers[1].rate = 0.75;
+/// neural_network.dropout_layers[2].rate = 0.9;
+/// 
 /// neural_network.fit(100, 1, x_train, y_train);
 /// neural_network.validate(x_test, y_test);
 /// ```
@@ -69,36 +136,36 @@ use crate::optimizers::*;
 /// 
 /// Some parts of an individual layer in the network can be adjusted, such as the dropout rate if it was enabled at network declaration.
 /// ```
-/// let x_train = ndarray::arr2(&[
-///     [0.7, 0.29, 1.0, 0.55, 0.33, 0.27],
-///     [0.01, 0.08, 0.893, 0.14, 0.19, 0.98]
-/// ]);
-/// 
-/// let mut neural_network = ksnn::ClassificationNetwork::new(
-///     vec!["ActivationReLU", "SoftmaxLossCC"],
-///     vec![32, 3],
-///     ksnn::enable_dropout_layers(true),
-///     ksnn::optimizers::optimizer_adam_def(),
-///     &x_train,
-/// );
-/// 
+/// # let x_train = ndarray::arr2(&[
+/// #    [0.7, 0.29, 1.0, 0.55, 0.33, 0.27],
+/// #    [0.01, 0.08, 0.893, 0.14, 0.19, 0.98]
+/// # ]);
+/// #
+/// # let mut neural_network = ksnn::ClassificationNetwork::new(
+/// #    vec!["ActivationReLU", "SoftmaxLossCC"],
+/// #    vec![32, 3],
+/// #    ksnn::enable_dropout_layers(true),
+/// #    ksnn::optimizers::optimizer_adam_def(),
+/// #    &x_train,
+/// # );
+/// #
 /// neural_network.dropout_layers[0].rate = 0.85;
 /// ```
 /// l1 and l2 regularization can also be adjusted for an individual layer
 /// ```
-/// let x_train = ndarray::arr2(&[
-///     [0.7, 0.29, 1.0, 0.55, 0.33, 0.27],
-///     [0.01, 0.08, 0.893, 0.14, 0.19, 0.98]
-/// ]);
-/// 
-/// let mut neural_network = ksnn::ClassificationNetwork::new(
-///     vec!["ActivationReLU", "SoftmaxLossCC"],
-///     vec![32, 3],
-///     ksnn::enable_dropout_layers(true),
-///     ksnn::optimizers::optimizer_adam_def(),
-///     &x_train,
-/// );
-/// 
+/// # let x_train = ndarray::arr2(&[
+/// #    [0.7, 0.29, 1.0, 0.55, 0.33, 0.27],
+/// #    [0.01, 0.08, 0.893, 0.14, 0.19, 0.98]
+/// # ]);
+/// #
+/// # let mut neural_network = ksnn::ClassificationNetwork::new(
+/// #    vec!["ActivationReLU", "SoftmaxLossCC"],
+/// #    vec![32, 3],
+/// #    ksnn::enable_dropout_layers(true),
+/// #    ksnn::optimizers::optimizer_adam_def(),
+/// #    &x_train,
+/// # );
+/// #
 /// neural_network.dense_layers[0].weight_regularizer_l1 = 5e-4;
 /// neural_network.dense_layers[0].weight_regularizer_l2 = 5e-4;
 /// neural_network.dense_layers[0].bias_regularizer_l1 = 5e-4;
@@ -152,6 +219,8 @@ impl ClassificationNetwork {
             return Err("Error: inappropriate number of activation functions to network layers.")
         }
 
+        println!("Forming Classification Network...");
+
         // Input layer
         dense_layers.push(DenseLayer::new(x.shape()[1], dense_layer_units[0], 0.0, 5e-4, 0.0, 5e-4));
 
@@ -186,6 +255,8 @@ impl ClassificationNetwork {
             }
         }
 
+        println!("Classification Network formed\n");
+
         Ok(ClassificationNetwork {
             dense_layer_activations: activations,
             dense_layers: dense_layers,
@@ -202,6 +273,7 @@ impl ClassificationNetwork {
     /// the networks loss and accuracy is displayed to the user. For example, if this parameter was supplied with a `10` then every ten epochs the loss and accuracy of the network
     /// would be displayed. `x_train` is the dataset the network will be training on. `y_train` is the anwsers for `x_train`. 
     pub fn fit(&mut self, training_epochs: u64, show_progress_interval: u64, x_train: Array2<f64>, y_train: Array2<i32>) { 
+        println!("Training Classification Network...");
         let training_progress_bar: ProgressBar = ProgressBar::new(training_epochs);
 
         if self.print_epoch == true {
@@ -318,12 +390,22 @@ impl ClassificationNetwork {
             }
             self.optimizer.post_update_params();
         }
+
+        if self.progress_bar == true {
+            println!("Training complete!\n\n");
+        }
+        else {
+            println!("Training complete\n");
+        }
+        
     }
     
     /// Tests the neural network on data after training to see how accurate the network is when faced with new information not found in the dataset (Note: the network does not supply
     /// this original information, it is currently  up to the user to ensure that the information passed to this function is information that the network has not really seen before).
     /// `x_test`is the validation data the network will try to process and give correct classifications for. `y_test` is the anwsers for `x_test`.
     pub fn validate(&mut self, x_test: Array2<f64>, y_test: Array2<i32>) {
+        println!("Validating Classification Network...");
+
         // Perform a forward pass of training data through this layer
         self.dense_layers[0].forward(&x_test);
                 
@@ -371,14 +453,67 @@ impl ClassificationNetwork {
         }
     }
 
-    pub fn save(&mut self, _file_name: &str) -> std::io::Result<()> {
-        /*let mut file = File::create("foo.txt")?;
-        file.write_all(b"Hello, world!")?;*/
+    /// Saves the current Classification Network's configuration to a file. 'file_name' is the path and file name that the network will save to. It is recommended to have the file
+    /// end in the '.json' extension. If you are saving the file to a folder, the folder must exist before you call this function.
+    /// # Example
+    /// ```no_run
+    /// # let x_train = ndarray::arr2(&[
+    /// #    [0.7, 0.29, 1.0, 0.55, 0.33, 0.27],
+    /// #    [0.01, 0.08, 0.893, 0.14, 0.19, 0.98]
+    /// # ]);
+    /// #
+    /// # let mut neural_network = ksnn::ClassificationNetwork::new(
+    /// #    vec!["ActivationReLU", "SoftmaxLossCC"],
+    /// #    vec![1, 3],
+    /// #    ksnn::enable_dropout_layers(true),
+    /// #    ksnn::optimizers::optimizer_adam_def(),
+    /// #    &x_train,
+    /// # );
+    /// neural_network.save("networks/new_network.json").unwrap();
+    /// ```
+    pub fn save(&mut self, file_name: &str) -> serde_json::Result<()> {
+        println!("\nWriting Classification Network to file '{}'...", file_name);
+
+        let network_data: Result<String, serde_json::Error> = serde_json::to_string(self);
+        let mut file: File = File::create(file_name).expect("Could not create file to save network data to.");
+        file.write_all(network_data
+            .unwrap_or("Could not get network data"
+                .to_string())
+                .as_bytes())
+            .expect("Could not write network data to file.");
+        
+        println!("Classification Network has been fully written to file '{}'", file_name);
+        
         Ok(())
     }
 
-    pub fn load(_file_name: &str) -> &str{
-        "loaded network!"
+    /// Loads a ClassificatioNetwork configuration from a file that is saved in the JSON format. 'file_name' is the path and file name that the network will load from to. 
+    /// 
+    /// # Example
+    /// ```no_run
+    /// ksnn::ClassificationNetwork::load("networks/old_network.json");
+    /// ```
+    pub fn load(file_name: &str) -> std::io::Result<ClassificationNetwork> {
+        let data_file = File::open(file_name).unwrap();
+        let file_reader = BufReader::new(data_file);
+        let mut data: String = "".to_owned();
+
+        for line in file_reader.lines() {
+            data.push_str(&line?);
+        }    
+
+        let network: ClassificationNetwork = serde_json::from_str(&data)?;
+
+        Ok(ClassificationNetwork {
+            dense_layer_activations: network.dense_layer_activations,
+            dense_layers: network.dense_layers,
+            optimizer: network.optimizer,
+            progress_bar: network.progress_bar,
+            print_epoch: network.print_epoch,
+            print_validation: network.print_validation,
+            have_dropout_layers: network.have_dropout_layers,
+            dropout_layers: network.dropout_layers,
+        })
     }
 }
 
@@ -419,12 +554,13 @@ fn calculate_accuracy(input: &Array2<f64>, y_true: &Array2<i32>) -> f64 {
     accuracy
 }
 
-/// Takes in a refernece to a one-hot encoded 2d array that contains anwser data, often marked as some form of y, and returns 
+/// Takes in a reference to a one-hot encoded 2d array that contains answer data, often marked as some form of y, and returns 
 /// the number of classes found in that array. 
 pub fn get_num_classes(y: &Array2<i32>) -> usize {
     y.shape()[1]
 }
 
+/// Takes in a bool value and outputs that same value.
 pub fn enable_dropout_layers(is_enabled: bool) -> bool {
     is_enabled
 }

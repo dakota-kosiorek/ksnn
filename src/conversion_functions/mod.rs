@@ -1,3 +1,7 @@
+//! conversion_functions
+//! 
+//! This module is a collection of diffrent functions that convert a variety of vectors and arrays to proper inputs for `ksnn`'s networks.
+
 use std::process;
 use ndarray::Array;
 use ndarray::Array2;

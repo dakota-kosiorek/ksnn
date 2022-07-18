@@ -1,7 +1,13 @@
+//! optimizers
+//! 
+//! This module is a collection of all currently avaliable optimizers for `ksnn` anbd function that provide quick definition
+//! for those optimizers.
+
 use ndarray::Array;
 use crate::network_layers::DenseLayer;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// A enum of pre-made optimizers for a neural network.
 pub enum Optimizers {
     OptimizerSGD(OptimizerSGD),
@@ -119,7 +125,7 @@ pub fn optimizer_adam_def() ->  Optimizers {
 
 /// The networks SGD optimizer that updates layer weights and biases to 
 /// reduce network loss and improve accuracy.
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OptimizerSGD {
     learning_rate: f64,
     current_learning_rate: f64,
@@ -185,7 +191,7 @@ impl OptimizerSGD {
 
 /// The networks Adagrad optimizer that updates layer weights and biases to 
 /// reduce network loss and improve accuracy.
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OptimizerAdagrad {
     learning_rate: f64,
     current_learning_rate: f64,
@@ -243,7 +249,7 @@ impl OptimizerAdagrad {
 
 /// The networks RMSprop optimizer that updates layer weights and biases to 
 /// reduce network loss and improve accuracy.
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OptimizerRMSprop {
     learning_rate: f64,
     current_learning_rate: f64,
@@ -303,7 +309,7 @@ impl OptimizerRMSprop {
 
 /// The networks Adam optimizer that updates layer weights and biases to 
 /// reduce network loss and improve accuracy.
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OptimizerAdam {
     learning_rate: f64,
     current_learning_rate: f64,

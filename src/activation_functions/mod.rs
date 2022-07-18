@@ -1,9 +1,14 @@
+//! activation_functions
+//! 
+//! All activation and loss functions that are needed for the networks are stored in this module.
+
 use ndarray::Array;
 use ndarray::Array2;
 use ndarray::Axis;
+use serde::{Serialize, Deserialize};
 use crate::network_layers::DenseLayer;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// A enum of pre-made activation functions that can be used in a neural network.
 pub enum ActivationFunctions {
     ActivationReLU(ActivationReLU),
@@ -51,7 +56,7 @@ impl ActivationFunctions {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// An activation function used in the hidden layers of this network, 
 /// the Rectified Linear Activation Function.
 pub struct ActivationReLU {
@@ -90,7 +95,7 @@ impl ActivationReLU {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// The softmax actiation function is used for the output layer and 
 /// returns probabilities for what each input samples classification is.
 pub struct ActivationSoftmax {
@@ -167,7 +172,7 @@ impl ActivationSoftmax {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// Calculates the networks current total loss.
 pub struct LossCategoricalCrossentropy {
     dinputs: Option<Array2<f64>>,
@@ -247,7 +252,7 @@ impl LossCategoricalCrossentropy {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// Full name ActivationSoftmaxLossCategoricalCrossentropy; A combination of the softmax activation function and the categorical loss 
 /// crossentropy function. The combination allows for a simplified implementation and overall faster calculation time.
 pub struct SoftmaxLossCC {

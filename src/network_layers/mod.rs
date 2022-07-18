@@ -1,11 +1,16 @@
+//! network_layers
+//! 
+//! All network layer types for the networks are stored in this module.
+
 use std::process;
 use ndarray::Array;
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray_rand::RandomExt;
 use rand_distr::{Normal, Binomial, Distribution};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// The individual layer for the nerual network. 
 pub struct DenseLayer {
     pub weights: Array2<f64>,
@@ -109,7 +114,7 @@ impl DenseLayer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 /// An individual layer for the neural network that only passes a certain amount of information to the next layer.
 pub struct DropoutLayer {
     pub rate: f64,
