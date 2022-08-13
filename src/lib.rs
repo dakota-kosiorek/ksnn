@@ -85,6 +85,7 @@ pub mod activation_functions;
 pub mod network_layers;
 pub mod optimizers;
 pub mod conversion_functions;
+pub mod gpu_compute;
 
 use crate::activation_functions::*;
 use crate::network_layers::*;
@@ -271,8 +272,9 @@ impl ClassificationNetwork {
 
     /// Trains the neural network. `training_epochs` is how many times the entire dataset is passed forward and backwards through the network. `show_progess_interval` is how often
     /// the networks loss and accuracy is displayed to the user. For example, if this parameter was supplied with a `10` then every ten epochs the loss and accuracy of the network
-    /// would be displayed. `x_train` is the dataset the network will be training on. `y_train` is the anwsers for `x_train`. 
-    pub fn fit(&mut self, training_epochs: u64, show_progress_interval: u64, x_train: Array2<f64>, y_train: Array2<i32>) { 
+    /// would be displayed. `x_train` is the dataset the network will be training on. `y_train` is the anwsers for `x_train`. `use_gpu` controls if the GPU should
+    /// used for calculations instead of the CPU. 
+    pub fn fit(&mut self, training_epochs: u64, show_progress_interval: u64, x_train: Array2<f64>, y_train: Array2<i32>, use_gpu: bool) { 
         println!("Training Classification Network...");
         let training_progress_bar: ProgressBar = ProgressBar::new(training_epochs);
 
@@ -290,105 +292,110 @@ impl ClassificationNetwork {
                 .progress_chars("##-"));
         }
 
-        for epoch in 0..training_epochs {
-            // ----------------------------------------------------------------------------------------
-            // ------------------------------------- Forward Pass -------------------------------------
-            
-            // Perform a forward pass of training data through this layer
-            self.dense_layers[0].forward(&x_train);
-                
-            // Perform a forward pass through activation function
-            // Takes the output of dense layer here
-            self.dense_layer_activations[0].forward(self.dense_layers[0].outputs.as_ref().unwrap(), &y_train);
-
-            if self.have_dropout_layers == true {
-                self.dropout_layers[0].forward(&self.dense_layer_activations[0].get_outputs());
-            }
-            
-            for i in 1..self.dense_layers.len() {
-                if self.have_dropout_layers == true {
-                    self.dense_layers[i].forward(&self.dropout_layers[i - 1].outputs.as_ref().unwrap());
-                    self.dense_layer_activations[i].forward(self.dense_layers[i].outputs.as_ref().unwrap(), &y_train);
-                    self.dropout_layers[i].forward(&self.dense_layer_activations[i].get_outputs());
-                }
-                else {
-                    // Perform a forward pass through the next Dense layer
-                    // Takes outputs of activation function of previous layer as inputs
-                    self.dense_layers[i].forward(&self.dense_layer_activations[i - 1].get_outputs());
-                    self.dense_layer_activations[i].forward(self.dense_layers[i].outputs.as_ref().unwrap(), &y_train);
-                }
-            }
-            
-            let final_activation_index = self.dense_layer_activations.len() - 1;
-            
-            // Perform a forward pass through the next activation function
-            // Takes the output of previous dense layer and training data anwsers
-            self.dense_layer_activations[final_activation_index].forward(&self.dense_layers[final_activation_index].outputs.as_ref().unwrap(), &y_train);
-
-            let final_activation_outputs = self.dense_layer_activations[final_activation_index].get_outputs().map(|x| *x);
-            
-            let data_loss: f64 = self.dense_layer_activations[final_activation_index].get_data_loss().unwrap();
-            let mut regularization_loss: f64 = 0.0;
-
-            // Calculate regularization penalty
-            for i in self.dense_layers.iter() {
-                let single_layer_regularization_loss: f64 = self.dense_layer_activations[final_activation_index].get_regularization_loss(i).unwrap_or_else(|err| {
-                    println!("Error in getting regularization loss: {}", err);
-                    process::exit(1);
-                });
-
-                regularization_loss += single_layer_regularization_loss;
-            }
-
-            let loss = data_loss + regularization_loss;
-            let accuracy = calculate_accuracy(&final_activation_outputs, &y_train);
-            
-            if ((epoch + 1) % show_progress_interval == 0 || epoch == 0) && self.print_epoch == true {
-                println!("epoch: {:indent$}, acc: {:.2}%, loss: {:.3} (data_loss: {:.3} reg_loss: {:.3}), lr: {:.7}", 
-                epoch + 1, 
-                accuracy * 100.0,
-                loss,
-                data_loss,
-                regularization_loss,
-                self.optimizer.get_current_leaning_rate(),
-                indent=training_epochs.to_string().len());
-            }
-            else if self.print_epoch == false {
-                training_progress_bar.inc(1);
-            }
-
-            // ----------------------------------------------------------------------------------------
-            // ------------------------------------ Backward Pass -------------------------------------
-            
-
-            self.dense_layer_activations[final_activation_index].backward(&final_activation_outputs, &y_train);
-            let final_activation_dinputs =  self.dense_layer_activations[final_activation_index].get_dinputs().map(|x| *x);
-            self.dense_layers[final_activation_index].backward(&final_activation_dinputs);
-
-            if self.have_dropout_layers == true {
-                self.dropout_layers[final_activation_index - 1].backward(&self.dense_layers[final_activation_index].dinputs.as_ref().unwrap());
-            }
-
-            for i in (0..(self.dense_layers.len() - 1)).rev() {
-                if self.have_dropout_layers == true {
-                    self.dense_layer_activations[i].backward(&self.dropout_layers[i].dinputs.as_ref().unwrap(), &y_train);
-                    self.dense_layers[i].backward(&self.dense_layer_activations[i].get_dinputs());
+        match use_gpu {
+            true => { println!("GPU training...") },
+            false => { 
+                for epoch in 0..training_epochs {
+                    // ----------------------------------------------------------------------------------------
+                    // ------------------------------------- Forward Pass -------------------------------------
                     
-                    if i > 0 {
-                        self.dropout_layers[i - 1].backward(&self.dense_layers[i].dinputs.as_ref().unwrap());
+                    // Perform a forward pass of training data through this layer
+                    self.dense_layers[0].forward(&x_train);
+                        
+                    // Perform a forward pass through activation function
+                    // Takes the output of dense layer here
+                    self.dense_layer_activations[0].forward(self.dense_layers[0].outputs.as_ref().unwrap(), &y_train);
+        
+                    if self.have_dropout_layers == true {
+                        self.dropout_layers[0].forward(&self.dense_layer_activations[0].get_outputs());
                     }
-                }
-                if self.have_dropout_layers == false {
-                    self.dense_layer_activations[i].backward(&self.dense_layers[i + 1].dinputs.as_ref().unwrap(), &y_train);
-                    self.dense_layers[i].backward(&self.dense_layer_activations[i].get_dinputs());
-                }
+                    
+                    for i in 1..self.dense_layers.len() {
+                        if self.have_dropout_layers == true {
+                            self.dense_layers[i].forward(&self.dropout_layers[i - 1].outputs.as_ref().unwrap());
+                            self.dense_layer_activations[i].forward(self.dense_layers[i].outputs.as_ref().unwrap(), &y_train);
+                            self.dropout_layers[i].forward(&self.dense_layer_activations[i].get_outputs());
+                        }
+                        else {
+                            // Perform a forward pass through the next Dense layer
+                            // Takes outputs of activation function of previous layer as inputs
+                            self.dense_layers[i].forward(&self.dense_layer_activations[i - 1].get_outputs());
+                            self.dense_layer_activations[i].forward(self.dense_layers[i].outputs.as_ref().unwrap(), &y_train);
+                        }
+                    }
+                    
+                    let final_activation_index = self.dense_layer_activations.len() - 1;
+                    
+                    // Perform a forward pass through the next activation function
+                    // Takes the output of previous dense layer and training data anwsers
+                    self.dense_layer_activations[final_activation_index].forward(&self.dense_layers[final_activation_index].outputs.as_ref().unwrap(), &y_train);
+        
+                    let final_activation_outputs = self.dense_layer_activations[final_activation_index].get_outputs().map(|x| *x);
+                    
+                    let data_loss: f64 = self.dense_layer_activations[final_activation_index].get_data_loss().unwrap();
+                    let mut regularization_loss: f64 = 0.0;
+        
+                    // Calculate regularization penalty
+                    for i in self.dense_layers.iter() {
+                        let single_layer_regularization_loss: f64 = self.dense_layer_activations[final_activation_index].get_regularization_loss(i).unwrap_or_else(|err| {
+                            println!("Error in getting regularization loss: {}", err);
+                            process::exit(1);
+                        });
+        
+                        regularization_loss += single_layer_regularization_loss;
+                    }
+        
+                    let loss = data_loss + regularization_loss;
+                    let accuracy = calculate_accuracy(&final_activation_outputs, &y_train);
+                    
+                    if ((epoch + 1) % show_progress_interval == 0 || epoch == 0) && self.print_epoch == true {
+                        println!("epoch: {:indent$}, acc: {:.2}%, loss: {:.3} (data_loss: {:.3} reg_loss: {:.3}), lr: {:.7}", 
+                        epoch + 1, 
+                        accuracy * 100.0,
+                        loss,
+                        data_loss,
+                        regularization_loss,
+                        self.optimizer.get_current_leaning_rate(),
+                        indent=training_epochs.to_string().len());
+                    }
+                    else if self.print_epoch == false {
+                        training_progress_bar.inc(1);
+                    }
+        
+                    // ----------------------------------------------------------------------------------------
+                    // ------------------------------------ Backward Pass -------------------------------------
+                    
+        
+                    self.dense_layer_activations[final_activation_index].backward(&final_activation_outputs, &y_train);
+                    let final_activation_dinputs =  self.dense_layer_activations[final_activation_index].get_dinputs().map(|x| *x);
+                    self.dense_layers[final_activation_index].backward(&final_activation_dinputs);
+        
+                    if self.have_dropout_layers == true {
+                        self.dropout_layers[final_activation_index - 1].backward(&self.dense_layers[final_activation_index].dinputs.as_ref().unwrap());
+                    }
+        
+                    for i in (0..(self.dense_layers.len() - 1)).rev() {
+                        if self.have_dropout_layers == true {
+                            self.dense_layer_activations[i].backward(&self.dropout_layers[i].dinputs.as_ref().unwrap(), &y_train);
+                            self.dense_layers[i].backward(&self.dense_layer_activations[i].get_dinputs());
+                            
+                            if i > 0 {
+                                self.dropout_layers[i - 1].backward(&self.dense_layers[i].dinputs.as_ref().unwrap());
+                            }
+                        }
+                        if self.have_dropout_layers == false {
+                            self.dense_layer_activations[i].backward(&self.dense_layers[i + 1].dinputs.as_ref().unwrap(), &y_train);
+                            self.dense_layers[i].backward(&self.dense_layer_activations[i].get_dinputs());
+                        }
+                    }
+        
+                    self.optimizer.pre_update_params();
+                    for i in 0..self.dense_layers.len() {
+                        self.optimizer.update_params(&mut self.dense_layers[i]);
+                    }
+                    self.optimizer.post_update_params();
+                } 
             }
-
-            self.optimizer.pre_update_params();
-            for i in 0..self.dense_layers.len() {
-                self.optimizer.update_params(&mut self.dense_layers[i]);
-            }
-            self.optimizer.post_update_params();
         }
 
         if self.progress_bar == true {
@@ -401,9 +408,10 @@ impl ClassificationNetwork {
     }
     
     /// Tests the neural network on data after training to see how accurate the network is when faced with new information not found in the dataset (Note: the network does not supply
-    /// this original information, it is currently  up to the user to ensure that the information passed to this function is information that the network has not really seen before).
-    /// `x_test`is the validation data the network will try to process and give correct classifications for. `y_test` is the anwsers for `x_test`.
-    pub fn validate(&mut self, x_test: Array2<f64>, y_test: Array2<i32>) {
+    /// this original information, it is currently up to the user to ensure that the information passed to this function is information that the network has not really seen before).
+    /// `x_test`is the validation data the network will try to process and give correct classifications for. `y_test` is the anwsers for `x_test`. `use_gpu` controls if the GPU should
+    /// used for calculations instead of the CPU.
+    pub fn validate(&mut self, x_test: Array2<f64>, y_test: Array2<i32>, _use_gpu: bool) {
         println!("Validating Classification Network...");
 
         // Perform a forward pass of training data through this layer

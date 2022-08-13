@@ -18,4 +18,4 @@ Cargo.lock
 /training
 
 # File used for testing crate 
-/src/main.rs
+#/src/main.rs
